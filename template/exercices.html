@@ -2,16 +2,14 @@
 <html lang="fr">
     <head>
         <meta charset="utf-8">
-        <link rel="stylesheet" href="static/style.css">
+        <!-- <link rel="stylesheet" href="static/style.css"> -->
         <title>Test exercices</title>
     </head>
     <body>
         <main>
             <h1>Liste des exercices</h1>
             <ul>
-                {{range.}}
-                <li>{{.Results}}</li>
-                {{end}}
+                <li>{{.Results.Translations.Name}}</li>
             </ul>
         </main>
     </body>

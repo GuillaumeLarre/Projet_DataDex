@@ -23,16 +23,14 @@ func isTimeout(err error) bool {
 	return false
 }
 
-var baseUrl = "https://wger.de/api/v2/"
-
-type Exercices struct {
-	Count    int       `json:"count"`
-	Next     string    `json:"next"`
-	Previous string    `json:"previous"`
-	Results  []Results `json:"results"`
+type DonneesApi struct {
+	Count    int        `json:"count"`
+	Next     string     `json:"next"`
+	Previous string     `json:"previous"`
+	Results  []Exercice `json:"results"`
 }
 
-type Results struct {
+type Exercice struct {
 	Id                 int                  `json:"id"`
 	Category           Category             `json:"category"`
 	Muscles            []Muscles            `json:"muscles"`
@@ -72,6 +70,10 @@ var (
 	ErrUnauthorized = errors.New("L'API nous refuse l'accès")
 )
 
+var urlExercices = "https://wger.de/api/v2/exerciseinfo/"
+var ensembleExercices []Exercice
+var erreurApi error
+
 func renderAPIError(w http.ResponseWriter, err error) {
 	log.Println("erreur API :", err)
 	switch {
@@ -87,7 +89,7 @@ func renderAPIError(w http.ResponseWriter, err error) {
 }
 
 func getJson(chemin string, variable any) error {
-	req, err := http.NewRequest(http.MethodGet, baseUrl+chemin, nil)
+	req, err := http.NewRequest(http.MethodGet, chemin, nil)
 	if err != nil {
 		return fmt.Errorf("Problème lors de la préparation de la requête avec le chemin %s : %w", chemin, err)
 	}
@@ -112,16 +114,29 @@ func getJson(chemin string, variable any) error {
 	return nil
 }
 
-func fetchExercices() (Exercices, error) {
-	var listeExercices Exercices
-	err := getJson("exerciseinfo", &listeExercices)
-	return listeExercices, err
+func fetchExercices(chemin string) (DonneesApi, error) {
+	var donneesApi DonneesApi
+	err := getJson(chemin, &donneesApi)
+	return donneesApi, err
+}
+
+func chargerTousLesExercices() ([]Exercice, error) {
+	var exercices []Exercice
+	url := urlExercices
+	for url != "" {
+		donneesApi, err := fetchExercices(url)
+		if err != nil {
+			return nil, err
+		}
+		exercices = append(exercices, donneesApi.Results...)
+		url = donneesApi.Next
+	}
+	return exercices, nil
 }
 
 func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
-	listeExercices, err := fetchExercices()
-	if err != nil {
-		renderAPIError(w, err)
+	if erreurApi != nil {
+		renderAPIError(w, erreurApi)
 		return
 	}
 	t, err := template.ParseFiles("template/exercices.html")
@@ -130,11 +145,25 @@ func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Un problème est survenu avec notre serveur", http.StatusInternalServerError)
 		return
 	}
-	t.Execute(w, listeExercices)
+	err = t.Execute(w, ensembleExercices)
+	if err != nil {
+		log.Print("Problème avec Execute :", err)
+		http.Error(w, "Un problème est survenu avec notre serveur", http.StatusInternalServerError)
+		return
+	}
 }
 
 func main() {
+	exercices, err := chargerTousLesExercices()
+	if err != nil {
+		erreurApi = err
+		log.Print("Problème de chargement du cache :", err)
+	}
+	ensembleExercices = exercices
 	mux := http.NewServeMux()
 	mux.HandleFunc("/exercices", afficherListeExercices)
-	http.ListenAndServe(":8080", mux)
+	err = http.ListenAndServe(":8080", mux)
+	if err != nil {
+		log.Fatal("Problème de lancement du serveur :", err)
+	}
 }
