@@ -32,6 +32,7 @@ type DonneesApi struct {
 
 type Exercice struct {
 	Id                 int                  `json:"id"`
+	Nom                string               `json:"-"`
 	Category           Category             `json:"category"`
 	Muscles            []Muscles            `json:"muscles"`
 	MusclesSecondaires []MusclesSecondaires `json:"muscles_secondary"`
@@ -73,6 +74,8 @@ var (
 var urlExercices = "https://wger.de/api/v2/exerciseinfo/"
 var ensembleExercices []Exercice
 var erreurApi error
+
+const langueAnglaise = 2
 
 func renderAPIError(w http.ResponseWriter, err error) {
 	log.Println("erreur API :", err)
@@ -153,13 +156,29 @@ func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func garderExercicesAvecNomEnAnglais(listeExercices []Exercice) []Exercice {
+	var nouvelleListe []Exercice
+	for i := 0; i < len(listeExercices); i++ {
+		for j := 0; j < len(listeExercices[i].Translations); j++ {
+			if listeExercices[i].Translations[j].Language == langueAnglaise {
+				listeExercices[i].Nom = listeExercices[i].Translations[j].Name
+				nouvelleListe = append(nouvelleListe, listeExercices[i])
+				break
+			}
+		}
+	}
+	return nouvelleListe
+}
+
 func main() {
 	exercices, err := chargerTousLesExercices()
 	if err != nil {
 		erreurApi = err
-		log.Print("Problème de chargement du cache :", err)
+		log.Println("Problème de chargement du cache :", err)
 	}
-	ensembleExercices = exercices
+	if len(exercices) != 0 {
+		ensembleExercices = garderExercicesAvecNomEnAnglais(exercices)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/exercices", afficherListeExercices)
 	err = http.ListenAndServe(":8080", mux)

@@ -9,7 +9,10 @@
         <main>
             <h1>Liste des exercices</h1>
             <ul>
-                <li>{{.Results.Translations.Name}}</li>
+                <li>Taille : {{len .}}</li>
+                {{range .}}
+                <li>{{.Nom}}</li>
+                {{end}}
             </ul>
         </main>
     </body>
