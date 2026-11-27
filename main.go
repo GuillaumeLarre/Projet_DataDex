@@ -23,21 +23,21 @@ func isTimeout(err error) bool {
 	return false
 }
 
-type DonneesApi struct {
-	Count    int        `json:"count"`
-	Next     string     `json:"next"`
-	Previous string     `json:"previous"`
-	Results  []Exercice `json:"results"`
+type DonneesApi[T any] struct {
+	Count    int    `json:"count"`
+	Next     string `json:"next"`
+	Previous string `json:"previous"`
+	Results  []T    `json:"results"`
 }
 
 type Exercice struct {
-	Id                 int                  `json:"id"`
-	Nom                string               `json:"-"`
-	Category           Category             `json:"category"`
-	Muscles            []Muscles            `json:"muscles"`
-	MusclesSecondaires []MusclesSecondaires `json:"muscles_secondary"`
-	Equipement         []Equipement         `json:"equipment"`
-	Translations       []Translations       `json:"translations"`
+	Id                 int                `json:"id"`
+	Nom                string             `json:"-"`
+	Category           Category           `json:"category"`
+	Muscles            []Muscle           `json:"muscles"`
+	MusclesSecondaires []MuscleSecondaire `json:"muscles_secondary"`
+	Equipement         []Equipement       `json:"equipment"`
+	Translations       []Translation      `json:"translations"`
 }
 
 type Category struct {
@@ -45,12 +45,13 @@ type Category struct {
 	Name string `json:"name"`
 }
 
-type Muscles struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
+type Muscle struct {
+	Id     int    `json:"id"`
+	Name   string `json:"name"`
+	NameEn string `json:"name_en"`
 }
 
-type MusclesSecondaires struct {
+type MuscleSecondaire struct {
 	Id   int    `json:"id"`
 	Name string `json:"name"`
 }
@@ -60,7 +61,7 @@ type Equipement struct {
 	Name string `json:"name"`
 }
 
-type Translations struct {
+type Translation struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Language    int    `json:"language"`
@@ -71,10 +72,13 @@ var (
 	ErrUnauthorized = errors.New("L'API nous refuse l'accès")
 )
 
-var urlExercices = "https://wger.de/api/v2/exerciseinfo/"
 var ensembleExercices []Exercice
 var erreurApi error
 
+const urlExercices = "https://wger.de/api/v2/exerciseinfo/"
+const urlMuscles = "https://wger.de/api/v2/muscle/"
+const urlEquipement = "https://wger.de/api/v2/equipment/"
+const urlExercicesCategorie = "https://wger.de/api/v2/exercisecategory/"
 const langueAnglaise = 2
 
 func renderAPIError(w http.ResponseWriter, err error) {
@@ -117,24 +121,24 @@ func getJson(chemin string, variable any) error {
 	return nil
 }
 
-func fetchExercices(chemin string) (DonneesApi, error) {
-	var donneesApi DonneesApi
+func recupererDonnees[T any](chemin string) (DonneesApi[T], error) {
+	var donneesApi DonneesApi[T]
 	err := getJson(chemin, &donneesApi)
 	return donneesApi, err
 }
 
-func chargerTousLesExercices() ([]Exercice, error) {
-	var exercices []Exercice
-	url := urlExercices
+func chargerToutesLesDonnees[T any](urlInitiale string) ([]T, error) {
+	var donnees []T
+	url := urlInitiale
 	for url != "" {
-		donneesApi, err := fetchExercices(url)
+		donneesApi, err := recupererDonnees[T](url)
 		if err != nil {
 			return nil, err
 		}
-		exercices = append(exercices, donneesApi.Results...)
+		donnees = append(donnees, donneesApi.Results...)
 		url = donneesApi.Next
 	}
-	return exercices, nil
+	return donnees, nil
 }
 
 func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
@@ -171,11 +175,26 @@ func garderExercicesAvecNomEnAnglais(listeExercices []Exercice) []Exercice {
 }
 
 func main() {
-	exercices, err := chargerTousLesExercices()
+	exercices, err := chargerToutesLesDonnees[Exercice](urlExercices)
 	if err != nil {
 		erreurApi = err
-		log.Println("Problème de chargement du cache :", err)
+		log.Println("Problème de chargement du cache {exercices} :", err)
 	}
+	// categories, err := chargerToutesLesDonnees[Category](urlExercicesCategorie)
+	// if err != nil {
+	// 	erreurApi = err
+	// 	log.Println("Problème de chargement du cache {catégories} :", err)
+	// }
+	// muscles, err := chargerToutesLesDonnees[Muscle](urlMuscles)
+	// if err != nil {
+	// 	erreurApi = err
+	// 	log.Println("Problème de chargement du cache {muscles} :", err)
+	// }
+	// equipements, err := chargerToutesLesDonnees[Equipement](urlEquipement)
+	// if err != nil {
+	// 	erreurApi = err
+	// 	log.Println("Problème de chargement du cache {equipements} :", err)
+	// }
 	if len(exercices) != 0 {
 		ensembleExercices = garderExercicesAvecNomEnAnglais(exercices)
 	}
