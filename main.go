@@ -23,7 +23,7 @@ func isTimeout(err error) bool {
 	return false
 }
 
-type DonneesApi[T any] struct {
+type ApiData[T any] struct {
 	Count    int    `json:"count"`
 	Next     string `json:"next"`
 	Previous string `json:"previous"`
@@ -68,12 +68,15 @@ var (
 )
 
 var ensembleExercices []Exercise
-var erreurApi error
+var ensembleMuscles []Muscle
+var ensembleCategories []Category
+var ensembleEquipements []Equipment
+var erreurChargementExercice error
 
 const urlExercices = "https://wger.de/api/v2/exerciseinfo/"
-const urlMuscles = "https://wger.de/api/v2/muscle/"
-const urlEquipement = "https://wger.de/api/v2/equipment/"
-const urlExercicesCategorie = "https://wger.de/api/v2/exercisecategory/"
+const urlMuscle = "https://wger.de/api/v2/muscle/"
+const urlEquipment = "https://wger.de/api/v2/equipment/"
+const urlExerciseCategory = "https://wger.de/api/v2/exercisecategory/"
 const langueAnglaise = 2
 
 func renderAPIError(w http.ResponseWriter, err error) {
@@ -116,8 +119,8 @@ func getJson(chemin string, variable any) error {
 	return nil
 }
 
-func recupererDonnees[T any](chemin string) (DonneesApi[T], error) {
-	var donneesApi DonneesApi[T]
+func recupererDonnees[T any](chemin string) (ApiData[T], error) {
+	var donneesApi ApiData[T]
 	err := getJson(chemin, &donneesApi)
 	return donneesApi, err
 }
@@ -137,8 +140,8 @@ func chargerToutesLesDonnees[T any](urlInitiale string) ([]T, error) {
 }
 
 func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
-	if erreurApi != nil {
-		renderAPIError(w, erreurApi)
+	if erreurChargementExercice != nil {
+		renderAPIError(w, erreurChargementExercice)
 		return
 	}
 	t, err := template.ParseFiles("template/exercices.html")
@@ -172,24 +175,27 @@ func garderExercicesAvecNomEnAnglais(listeExercices []Exercise) []Exercise {
 func main() {
 	exercices, err := chargerToutesLesDonnees[Exercise](urlExercices)
 	if err != nil {
-		erreurApi = err
-		log.Println("Problème de chargement du cache {exercices} :", err)
+		erreurChargementExercice = err
+		log.Println("Problème de chargement des exercices :", err)
 	}
-	// categories, err := chargerToutesLesDonnees[Category](urlExercicesCategorie)
-	// if err != nil {
-	// 	erreurApi = err
-	// 	log.Println("Problème de chargement du cache {catégories} :", err)
-	// }
-	// muscles, err := chargerToutesLesDonnees[Muscle](urlMuscles)
-	// if err != nil {
-	// 	erreurApi = err
-	// 	log.Println("Problème de chargement du cache {muscles} :", err)
-	// }
-	// equipements, err := chargerToutesLesDonnees[Equipement](urlEquipement)
-	// if err != nil {
-	// 	erreurApi = err
-	// 	log.Println("Problème de chargement du cache {equipements} :", err)
-	// }
+	categories, err := chargerToutesLesDonnees[Category](urlExerciseCategory)
+	if err != nil {
+		log.Println("Problème de chargement des catégories :", err)
+	}
+	ensembleCategories = categories
+	log.Println(len(ensembleCategories))
+	muscles, err := chargerToutesLesDonnees[Muscle](urlMuscle)
+	if err != nil {
+		log.Println("Problème de chargement des muscles :", err)
+	}
+	ensembleMuscles = muscles
+	log.Println(len(ensembleMuscles))
+	equipements, err := chargerToutesLesDonnees[Equipment](urlEquipment)
+	if err != nil {
+		log.Println("Problème de chargement des équipements :", err)
+	}
+	ensembleEquipements = equipements
+	log.Println(len(ensembleEquipements))
 	if len(exercices) != 0 {
 		ensembleExercices = garderExercicesAvecNomEnAnglais(exercices)
 	}
