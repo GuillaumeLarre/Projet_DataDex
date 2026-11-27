@@ -30,14 +30,14 @@ type DonneesApi[T any] struct {
 	Results  []T    `json:"results"`
 }
 
-type Exercice struct {
-	Id                 int                `json:"id"`
-	Nom                string             `json:"-"`
-	Category           Category           `json:"category"`
-	Muscles            []Muscle           `json:"muscles"`
-	MusclesSecondaires []MuscleSecondaire `json:"muscles_secondary"`
-	Equipement         []Equipement       `json:"equipment"`
-	Translations       []Translation      `json:"translations"`
+type Exercise struct {
+	Id               int           `json:"id"`
+	Name             string        `json:"-"`
+	Category         Category      `json:"category"`
+	Muscles          []Muscle      `json:"muscles"`
+	MusclesSecondary []Muscle      `json:"muscles_secondary"`
+	Equipments       []Equipment   `json:"equipment"`
+	Translations     []Translation `json:"translations"`
 }
 
 type Category struct {
@@ -51,12 +51,7 @@ type Muscle struct {
 	NameEn string `json:"name_en"`
 }
 
-type MuscleSecondaire struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type Equipement struct {
+type Equipment struct {
 	Id   int    `json:"id"`
 	Name string `json:"name"`
 }
@@ -72,7 +67,7 @@ var (
 	ErrUnauthorized = errors.New("L'API nous refuse l'accès")
 )
 
-var ensembleExercices []Exercice
+var ensembleExercices []Exercise
 var erreurApi error
 
 const urlExercices = "https://wger.de/api/v2/exerciseinfo/"
@@ -160,12 +155,12 @@ func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func garderExercicesAvecNomEnAnglais(listeExercices []Exercice) []Exercice {
-	var nouvelleListe []Exercice
+func garderExercicesAvecNomEnAnglais(listeExercices []Exercise) []Exercise {
+	var nouvelleListe []Exercise
 	for i := 0; i < len(listeExercices); i++ {
 		for j := 0; j < len(listeExercices[i].Translations); j++ {
 			if listeExercices[i].Translations[j].Language == langueAnglaise {
-				listeExercices[i].Nom = listeExercices[i].Translations[j].Name
+				listeExercices[i].Name = listeExercices[i].Translations[j].Name
 				nouvelleListe = append(nouvelleListe, listeExercices[i])
 				break
 			}
@@ -175,7 +170,7 @@ func garderExercicesAvecNomEnAnglais(listeExercices []Exercice) []Exercice {
 }
 
 func main() {
-	exercices, err := chargerToutesLesDonnees[Exercice](urlExercices)
+	exercices, err := chargerToutesLesDonnees[Exercise](urlExercices)
 	if err != nil {
 		erreurApi = err
 		log.Println("Problème de chargement du cache {exercices} :", err)
