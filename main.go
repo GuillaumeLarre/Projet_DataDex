@@ -46,9 +46,10 @@ type Category struct {
 }
 
 type Muscle struct {
-	Id     int    `json:"id"`
-	Name   string `json:"name"`
-	NameEn string `json:"name_en"`
+	Id          int    `json:"id"`
+	DisplayName string `json:"-"`
+	Name        string `json:"name"`
+	NameEn      string `json:"name_en"`
 }
 
 type Equipment struct {
@@ -67,6 +68,10 @@ var (
 	ErrUnauthorized = errors.New("L'API nous refuse l'accès")
 )
 
+var correspondanceIdMuscleEtNom = map[int]string{
+	14: "External abdominal oblique",
+}
+
 var ensembleExercices []Exercise
 var ensembleMuscles []Muscle
 var ensembleCategories []Category
@@ -78,6 +83,25 @@ const urlMuscle = "https://wger.de/api/v2/muscle/"
 const urlEquipment = "https://wger.de/api/v2/equipment/"
 const urlExerciseCategory = "https://wger.de/api/v2/exercisecategory/"
 const langueAnglaise = 2
+
+func definirNomAffichageMuscle(muscle *Muscle) {
+	if muscle.NameEn == "" {
+		nom, ok := correspondanceIdMuscleEtNom[muscle.Id]
+		if !ok {
+			muscle.DisplayName = muscle.Name
+		} else {
+			muscle.DisplayName = nom
+		}
+	} else {
+		muscle.DisplayName = muscle.NameEn
+	}
+}
+
+func definirNomsAffichageMuscle(listeMuscle []Muscle) {
+	for i := 0; i < len(listeMuscle); i++ {
+		definirNomAffichageMuscle(&listeMuscle[i])
+	}
+}
 
 func renderAPIError(w http.ResponseWriter, err error) {
 	log.Println("erreur API :", err)
@@ -183,21 +207,27 @@ func main() {
 		log.Println("Problème de chargement des catégories :", err)
 	}
 	ensembleCategories = categories
-	log.Println(len(ensembleCategories))
+	log.Println("Nombre de catégories chargés :", len(ensembleCategories))
 	muscles, err := chargerToutesLesDonnees[Muscle](urlMuscle)
 	if err != nil {
 		log.Println("Problème de chargement des muscles :", err)
 	}
 	ensembleMuscles = muscles
-	log.Println(len(ensembleMuscles))
+	definirNomsAffichageMuscle(ensembleMuscles)
+	log.Println("Nombre de muscles chargés :", len(ensembleMuscles))
 	equipements, err := chargerToutesLesDonnees[Equipment](urlEquipment)
 	if err != nil {
 		log.Println("Problème de chargement des équipements :", err)
 	}
 	ensembleEquipements = equipements
-	log.Println(len(ensembleEquipements))
+	log.Println("Nombre d'équipements chargés :", len(ensembleEquipements))
 	if len(exercices) != 0 {
 		ensembleExercices = garderExercicesAvecNomEnAnglais(exercices)
+		log.Println("Nombre d'exercices chargés :", len(ensembleExercices))
+		for i := 0; i < len(ensembleExercices); i++ {
+			definirNomsAffichageMuscle(ensembleExercices[i].Muscles)
+			definirNomsAffichageMuscle(ensembleExercices[i].MusclesSecondary)
+		}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/exercices", afficherListeExercices)
