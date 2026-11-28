@@ -1,236 +1,47 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"html/template"
+	"Projet_DataDex/internal/api"
+	"Projet_DataDex/internal/web"
 	"log"
-	"net"
 	"net/http"
-	"time"
 )
-
-var client = &http.Client{
-	Timeout: 3 * time.Second,
-}
-
-func isTimeout(err error) bool {
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return netErr.Timeout()
-	}
-	return false
-}
-
-type ApiData[T any] struct {
-	Count    int    `json:"count"`
-	Next     string `json:"next"`
-	Previous string `json:"previous"`
-	Results  []T    `json:"results"`
-}
-
-type Exercise struct {
-	Id               int           `json:"id"`
-	Name             string        `json:"-"`
-	Category         Category      `json:"category"`
-	Muscles          []Muscle      `json:"muscles"`
-	MusclesSecondary []Muscle      `json:"muscles_secondary"`
-	Equipments       []Equipment   `json:"equipment"`
-	Translations     []Translation `json:"translations"`
-}
-
-type Category struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type Muscle struct {
-	Id          int    `json:"id"`
-	DisplayName string `json:"-"`
-	Name        string `json:"name"`
-	NameEn      string `json:"name_en"`
-}
-
-type Equipment struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type Translation struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Language    int    `json:"language"`
-}
-
-var (
-	ErrNotFound     = errors.New("Cette ressource est introuvable")
-	ErrUnauthorized = errors.New("L'API nous refuse l'accès")
-)
-
-var correspondanceIdMuscleEtNom = map[int]string{
-	14: "External abdominal oblique",
-}
-
-var ensembleExercices []Exercise
-var ensembleMuscles []Muscle
-var ensembleCategories []Category
-var ensembleEquipements []Equipment
-var erreurChargementExercice error
-
-const urlExercices = "https://wger.de/api/v2/exerciseinfo/"
-const urlMuscle = "https://wger.de/api/v2/muscle/"
-const urlEquipment = "https://wger.de/api/v2/equipment/"
-const urlExerciseCategory = "https://wger.de/api/v2/exercisecategory/"
-const langueAnglaise = 2
-
-func definirNomAffichageMuscle(muscle *Muscle) {
-	if muscle.NameEn == "" {
-		nom, ok := correspondanceIdMuscleEtNom[muscle.Id]
-		if !ok {
-			muscle.DisplayName = muscle.Name
-		} else {
-			muscle.DisplayName = nom
-		}
-	} else {
-		muscle.DisplayName = muscle.NameEn
-	}
-}
-
-func definirNomsAffichageMuscle(listeMuscle []Muscle) {
-	for i := 0; i < len(listeMuscle); i++ {
-		definirNomAffichageMuscle(&listeMuscle[i])
-	}
-}
-
-func renderAPIError(w http.ResponseWriter, err error) {
-	log.Println("erreur API :", err)
-	switch {
-	case errors.Is(err, ErrNotFound):
-		http.Error(w, "Cette ressource n'existe pas.", 404)
-	case errors.Is(err, ErrUnauthorized):
-		http.Error(w, "L'API refuse notre accès.", 502)
-	case isTimeout(err):
-		http.Error(w, "L'API met trop de temps.", 504)
-	default:
-		http.Error(w, "L'API est indisponible.", 502)
-	}
-}
-
-func getJson(chemin string, variable any) error {
-	req, err := http.NewRequest(http.MethodGet, chemin, nil)
-	if err != nil {
-		return fmt.Errorf("Problème lors de la préparation de la requête avec le chemin %s : %w", chemin, err)
-	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("Problème lors de la requête avec le chemin %s : %w", chemin, err)
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return ErrNotFound
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
-		return ErrUnauthorized
-	case resp.StatusCode != http.StatusOK:
-		return fmt.Errorf("Un problème est survenu avec l'API sur le chemin %s : %d", chemin, resp.StatusCode)
-	}
-	err = json.NewDecoder(resp.Body).Decode(variable)
-	if err != nil {
-		return fmt.Errorf("Problème lors du décodage Json avec le chemin %s : %w", chemin, err)
-	}
-	return nil
-}
-
-func recupererDonnees[T any](chemin string) (ApiData[T], error) {
-	var donneesApi ApiData[T]
-	err := getJson(chemin, &donneesApi)
-	return donneesApi, err
-}
-
-func chargerToutesLesDonnees[T any](urlInitiale string) ([]T, error) {
-	var donnees []T
-	url := urlInitiale
-	for url != "" {
-		donneesApi, err := recupererDonnees[T](url)
-		if err != nil {
-			return nil, err
-		}
-		donnees = append(donnees, donneesApi.Results...)
-		url = donneesApi.Next
-	}
-	return donnees, nil
-}
-
-func afficherListeExercices(w http.ResponseWriter, r *http.Request) {
-	if erreurChargementExercice != nil {
-		renderAPIError(w, erreurChargementExercice)
-		return
-	}
-	t, err := template.ParseFiles("template/exercices.html")
-	if err != nil {
-		log.Print("Problème avec Parsefiles :", err)
-		http.Error(w, "Un problème est survenu avec notre serveur", http.StatusInternalServerError)
-		return
-	}
-	err = t.Execute(w, ensembleExercices)
-	if err != nil {
-		log.Print("Problème avec Execute :", err)
-		http.Error(w, "Un problème est survenu avec notre serveur", http.StatusInternalServerError)
-		return
-	}
-}
-
-func garderExercicesAvecNomEnAnglais(listeExercices []Exercise) []Exercise {
-	var nouvelleListe []Exercise
-	for i := 0; i < len(listeExercices); i++ {
-		for j := 0; j < len(listeExercices[i].Translations); j++ {
-			if listeExercices[i].Translations[j].Language == langueAnglaise {
-				listeExercices[i].Name = listeExercices[i].Translations[j].Name
-				nouvelleListe = append(nouvelleListe, listeExercices[i])
-				break
-			}
-		}
-	}
-	return nouvelleListe
-}
 
 func main() {
-	exercices, err := chargerToutesLesDonnees[Exercise](urlExercices)
+	exercices, err := api.ChargerToutesLesDonnees[api.Exercise](api.UrlExercices)
 	if err != nil {
-		erreurChargementExercice = err
+		web.ErreurChargementExercice = err
 		log.Println("Problème de chargement des exercices :", err)
 	}
-	categories, err := chargerToutesLesDonnees[Category](urlExerciseCategory)
+	categories, err := api.ChargerToutesLesDonnees[api.Category](api.UrlExerciseCategory)
 	if err != nil {
 		log.Println("Problème de chargement des catégories :", err)
 	}
-	ensembleCategories = categories
-	log.Println("Nombre de catégories chargés :", len(ensembleCategories))
-	muscles, err := chargerToutesLesDonnees[Muscle](urlMuscle)
+	web.EnsembleCategories = categories
+	log.Println("Nombre de catégories chargés :", len(web.EnsembleCategories))
+	muscles, err := api.ChargerToutesLesDonnees[api.Muscle](api.UrlMuscle)
 	if err != nil {
 		log.Println("Problème de chargement des muscles :", err)
 	}
-	ensembleMuscles = muscles
-	definirNomsAffichageMuscle(ensembleMuscles)
-	log.Println("Nombre de muscles chargés :", len(ensembleMuscles))
-	equipements, err := chargerToutesLesDonnees[Equipment](urlEquipment)
+	web.EnsembleMuscles = muscles
+	api.DefinirNomsAffichageMuscle(web.EnsembleMuscles)
+	log.Println("Nombre de muscles chargés :", len(web.EnsembleMuscles))
+	equipements, err := api.ChargerToutesLesDonnees[api.Equipment](api.UrlEquipment)
 	if err != nil {
 		log.Println("Problème de chargement des équipements :", err)
 	}
-	ensembleEquipements = equipements
-	log.Println("Nombre d'équipements chargés :", len(ensembleEquipements))
+	web.EnsembleEquipements = equipements
+	log.Println("Nombre d'équipements chargés :", len(web.EnsembleEquipements))
 	if len(exercices) != 0 {
-		ensembleExercices = garderExercicesAvecNomEnAnglais(exercices)
-		log.Println("Nombre d'exercices chargés :", len(ensembleExercices))
-		for i := 0; i < len(ensembleExercices); i++ {
-			definirNomsAffichageMuscle(ensembleExercices[i].Muscles)
-			definirNomsAffichageMuscle(ensembleExercices[i].MusclesSecondary)
+		web.EnsembleExercices = api.GarderExercicesAvecNomEnAnglais(exercices)
+		log.Println("Nombre d'exercices chargés :", len(web.EnsembleExercices))
+		for i := 0; i < len(web.EnsembleExercices); i++ {
+			api.DefinirNomsAffichageMuscle(web.EnsembleExercices[i].Muscles)
+			api.DefinirNomsAffichageMuscle(web.EnsembleExercices[i].MusclesSecondary)
 		}
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/exercices", afficherListeExercices)
+	mux.HandleFunc("/exercices", web.AfficherListeExercices)
 	err = http.ListenAndServe(":8080", mux)
 	if err != nil {
 		log.Fatal("Problème de lancement du serveur :", err)
